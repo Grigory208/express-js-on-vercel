@@ -5,12 +5,11 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 
-// Берем данные из переменных окружения Layero
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vrcpbbwzyejdupebhvkl.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyY3BiYnd6eWVqZHVwZWJodmtsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjU4NzYsImV4cCI6MjEwNDcwMTg3Nn0.oE1Fu9IlU69u_D28NP6tcYjgb2pSNLVn4FmOiT5NNqA';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://твой-проект.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'твой-ключ';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Функция для генерации UUID по нику (нужно для пиратки)
+// Генератор правильного Minecraft UUID (v3)
 function getOfflineUUID(username) {
   const hash = crypto.createHash('md5').update('OfflinePlayer:' + username).digest();
   hash[6] = (hash[6] & 0x0f) | 0x30;
@@ -19,34 +18,67 @@ function getOfflineUUID(username) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-// 1. Авторизация (Yggdrasil)
-app.post('/authserver/authenticate', (req, res) => {
+// 1. Авторизация (связываем ник и UUID)
+app.post('/authserver/authenticate', async (req, res) => {
   const { username } = req.body;
-  const user = username || 'Player';
-  const uuid = getOfflineUUID(user);
+  const mcUuid = getOfflineUUID(username);
+
+  try {
+    // Ищем профиль по нику
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, minecraft_uuid')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (profile) {
+      // Если в базе еще нет майнкрафт-UUID, записываем его туда
+      if (!profile.minecraft_uuid) {
+        await supabase.from('profiles').update({ minecraft_uuid: mcUuid }).eq('id', profile.id);
+      }
+    }
+  } catch (e) {
+    console.error('Ошибка привязки UUID:', e);
+  }
   
+  // Возвращаем игре ПРАВИЛЬНЫЙ майнкрафтовский UUID
   res.json({
-    accessToken: 'token-' + uuid,
+    accessToken: 'token-' + mcUuid,
     clientToken: 'client-token',
-    availableProfiles: [{ name: user, id: uuid.replace(/-/g, '') }],
-    selectedProfile: { name: user, id: uuid.replace(/-/g, '') }
+    availableProfiles: [{ name: username, id: mcUuid.replace(/-/g, '') }],
+    selectedProfile: { name: username, id: mcUuid.replace(/-/g, '') }
   });
 });
 
-// 2. Выдача скина (Yggdrasil)
+// 2. Выдача скина
 app.get('/sessionserver/session/minecraft/profile/:uuid', async (req, res) => {
   const { uuid } = req.params;
   
-  try {
-    // Ищем активный скин в твоей базе Supabase
-    const { data, error } = await supabase
-      .from('skins')
-      .select('skin_url')
-      .eq('active', true)
-      .limit(1)
-      .maybeSingle(); // Используем maybeSingle, чтобы не было ошибки, если скина нет
+  // Приводим UUID к формату с дефисами
+  const formattedUuid = uuid.includes('-') ? uuid : 
+    `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 
-    let skinUrl = data?.skin_url || 'http://textures.minecraft.net/texture/...'; 
+  try {
+    // 1. Ищем игрока в profiles по майнкрафт-UUID
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('minecraft_uuid', formattedUuid)
+      .maybeSingle();
+
+    let skinUrl = 'http://textures.minecraft.net/texture/...'; 
+
+    // 2. Если нашли игрока, ищем его активный скин по Supabase ID
+    if (profile) {
+      const { data: skin } = await supabase
+        .from('skins')
+        .select('skin_url')
+        .eq('user_id', profile.id)
+        .eq('active', true)
+        .maybeSingle();
+        
+      if (skin) skinUrl = skin.skin_url;
+    }
 
     const textures = {
       timestamp: Date.now(),
@@ -66,12 +98,8 @@ app.get('/sessionserver/session/minecraft/profile/:uuid', async (req, res) => {
   }
 });
 
-// 3. Проверка работоспособности (чтобы браузер показывал, что сервер жив)
-app.get('/', (req, res) => {
-  res.send('✅ Сервер скинов работает!');
-});
+app.get('/', (req, res) => res.send('✅ Сервер скинов работает!'));
 
-// ⬇️ САМОЕ ВАЖНОЕ ДЛЯ LAYERO ⬇️
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Сервер скинов запущен на порту ${PORT}`);
