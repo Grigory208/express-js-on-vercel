@@ -5,8 +5,9 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vrcpbbwzyejdupebhvkl.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyY3BiYnd6eWVqZHVwZWJodmtsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjU4NzYsImV4cCI6MjEwNDcwMTg3Nn0.oE1Fu9IlU69u_D28NP6tcYjgb2pSNLVn4FmOiT5NNqA';
+// Берем данные из переменных окружения Layero
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://твой-проект.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'твой-ключ';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Генератор правильного Minecraft UUID (v3)
@@ -24,7 +25,6 @@ app.post('/authserver/authenticate', async (req, res) => {
   const mcUuid = getOfflineUUID(username);
 
   try {
-    // Ищем профиль по нику
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, minecraft_uuid')
@@ -32,7 +32,6 @@ app.post('/authserver/authenticate', async (req, res) => {
       .maybeSingle();
 
     if (profile) {
-      // Если в базе еще нет майнкрафт-UUID, записываем его туда
       if (!profile.minecraft_uuid) {
         await supabase.from('profiles').update({ minecraft_uuid: mcUuid }).eq('id', profile.id);
       }
@@ -41,7 +40,6 @@ app.post('/authserver/authenticate', async (req, res) => {
     console.error('Ошибка привязки UUID:', e);
   }
   
-  // Возвращаем игре ПРАВИЛЬНЫЙ майнкрафтовский UUID
   res.json({
     accessToken: 'token-' + mcUuid,
     clientToken: 'client-token',
@@ -54,12 +52,10 @@ app.post('/authserver/authenticate', async (req, res) => {
 app.get('/sessionserver/session/minecraft/profile/:uuid', async (req, res) => {
   const { uuid } = req.params;
   
-  // Приводим UUID к формату с дефисами
   const formattedUuid = uuid.includes('-') ? uuid : 
     `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 
   try {
-    // 1. Ищем игрока в profiles по майнкрафт-UUID
     const { data: profile } = await supabase
       .from('profiles')
       .select('id')
@@ -68,7 +64,6 @@ app.get('/sessionserver/session/minecraft/profile/:uuid', async (req, res) => {
 
     let skinUrl = 'http://textures.minecraft.net/texture/...'; 
 
-    // 2. Если нашли игрока, ищем его активный скин по Supabase ID
     if (profile) {
       const { data: skin } = await supabase
         .from('skins')
@@ -98,7 +93,21 @@ app.get('/sessionserver/session/minecraft/profile/:uuid', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.send('✅ Сервер скинов работает!'));
+// ⬇️ ИСПРАВЛЕНИЕ ОШИБКИ INVALID JSON ⬇️
+// Отдаем метаданные сервера (authlib-injector требует именно JSON)
+app.get('/', (req, res) => {
+  res.json({
+    meta: {
+      serverName: "Vertex Skin Server",
+      implementationName: "Vertex Launcher",
+      implementationVersion: "1.0.0"
+    },
+    skinDomains: [
+      "layero.app",      // Разрешаем Layero
+      "supabase.co"      // КРИТИЧЕСКИ ВАЖНО: Разрешаем грузить картинки из твоего Supabase!
+    ]
+  });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
