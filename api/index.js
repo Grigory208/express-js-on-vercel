@@ -6,8 +6,8 @@ const app = express();
 app.use(express.json());
 
 // Берем данные из переменных окружения Layero
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://твой-проект.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'твой-ключ';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vrcpbbwzyejdupebhvkl.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyY3BiYnd6eWVqZHVwZWJodmtsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjU4NzYsImV4cCI6MjEwNDcwMTg3Nn0.oE1Fu9IlU69u_D28NP6tcYjgb2pSNLVn4FmOiT5NNqA';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Генератор правильного Minecraft UUID (v3)
