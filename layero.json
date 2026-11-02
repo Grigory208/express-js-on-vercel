@@ -1,5 +1,7 @@
 {
+  "runtime": "node_web",
+  "nodeVersion": "24.x",
   "buildCommand": "npm install",
   "startCommand": "node api/index.js",
-  "nodeVersion": "24.x"
+  "port": 3000
 }
